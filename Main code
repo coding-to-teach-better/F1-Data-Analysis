@@ -1,0 +1,149 @@
+# importing data frame
+
+import csv 
+import json 
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import random
+from scipy.stats import chi2_contingency
+ 
+
+dir_name = "enter data file path"
+df_list = []
+for file in os.listdir(dir_name):
+      
+    # reading content into data frame
+    df = pd.read_csv(dir_name+"\\"+file, encoding = 'latin1')
+    df_list.append(df)
+    
+results = df_list[10].sort_values(by='raceId')
+races = df_list[9].sort_values(by='raceId')
+lap_times = df_list[6]
+
+# new dataframe with driver, constructor, race id 
+
+collatedData = results[['raceId','driverId', 'constructorId']].copy()
+
+collatedData = collatedData.join(races, rsuffix='races', on='raceId')
+
+collatedData = collatedData.drop(['raceIdraces', 'time', 'url', 'round', 'circuitId', 'year'],axis=1)
+
+collatedData = collatedData.sort_values(by = 'date')
+
+# obtaining driverId of drivers who changed constructors 
+
+
+multipleConstructorDrivers= []
+
+
+for driver in collatedData.driverId.unique():
+    df1 = collatedData.loc[(collatedData['driverId'] == driver)]
+    conNum = len(df1.constructorId.unique())
+    if conNum >= 2:
+        iD = int(df1['driverId'].unique())
+        multipleConstructorDrivers.append(iD)
+        
+# removing racers not with multiple constructors
+
+collatedData = collatedData[collatedData.driverId.isin(multipleConstructorDrivers) == True]
+
+lap_times = lap_times[lap_times.driverId.isin(multipleConstructorDrivers) == True]
+
+collatedData = collatedData.sort_values(by=['driverId','constructorId','name','date'])
+lap_times = lap_times.sort_values(by='raceId')
+
+# getting average lap times for each driver 
+
+AverageLapTime = lap_times.groupby(["raceId",'driverId',]).mean()
+
+AverageLapTime = AverageLapTime.reset_index()
+
+AverageLapTime = AverageLapTime.sort_values(by=['driverId'])
+
+# collated data into final dataset
+
+from functools import reduce
+
+dfs = [collatedData, AverageLapTime]
+
+finalData = reduce(lambda  left,right: pd.merge(left,right,on=['raceId','driverId'],
+                                     how='outer'), dfs).fillna('none')
+
+finalData = finalData.drop(['lap','position'],axis=1)
+
+finalData = finalData[finalData.name != 'none']
+finalData = finalData[finalData.milliseconds != 'none']
+
+# pivot tables to rearrange values
+
+finalData = finalData.sort_values(by=['driverId','constructorId','name'])
+
+finalData.milliseconds = finalData.milliseconds.astype(float)
+
+averageFinalData = finalData.groupby(['driverId','constructorId','name']).mean()
+
+averageFinalData = averageFinalData.reset_index()
+
+averageFinalData = averageFinalData.drop(['raceId'],axis=1)
+
+pivoted = averageFinalData.pivot(index=['driverId','name'],columns= ['constructorId'],values='milliseconds').fillna(0)
+
+#pivoted = averageFinalData.pivot(index=['driverId','constructorId'],columns= ['name'],values='milliseconds').fillna(0)
+
+#pivoted = pivoted.diff(axis=0)
+
+print(averageFinalData)
+
+# calculating differences attempt 2
+
+lsts = pivoted.values.tolist()
+differences = []
+
+for lst in lsts:
+    lst = np.array(lst)
+    lst = lst[lst != 0]
+    diff = np.diff(lst).sum()
+    differences.append(diff)
+
+# adding differences back to table
+
+pivoted['differences'] = differences
+
+# counting positive and negative differences indicative of improvement or getting worse
+
+improving = len(pivoted[pivoted['differences'] > 0 ])
+
+deteriorating = len(pivoted[pivoted['differences'] < 0 ])
+
+print('number of improvements are', improving)
+
+print('number of deteriorations are', deteriorating)
+
+print('percentage difference made by moving is', (((improving - deteriorating) * 100) / improving), "%")
+
+# race, average diff across drivers
+
+pivotedRaceAverage = pivoted.reset_index().sort_values(by='name')
+
+pivotedRaceAverage = pivotedRaceAverage.groupby('name').sum()
+
+pivotedRaceAverage = pivotedRaceAverage.reset_index()
+
+# Accessing each axes object to plot the data through returned array
+
+x = pivotedRaceAverage['name']
+y = pivotedRaceAverage['differences']/1000
+
+plt.figure(figsize=(15,4))
+
+plt.bar(x, y, width = 0.6)
+
+plt.xticks(rotation=90)
+
+plt.xlabel("F1 Competition")
+plt.ylabel("Average difference in time between drivers Sec")
+
+plt.show()
+
