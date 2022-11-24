@@ -10,7 +10,7 @@ import random
 from scipy.stats import chi2_contingency
  
 
-dir_name = "enter data file path"
+dir_name = "enter data directory path"
 df_list = []
 for file in os.listdir(dir_name):
       
