@@ -96,7 +96,7 @@ pivoted = averageFinalData.pivot(index=['driverId','name'],columns= ['constructo
 
 print(averageFinalData)
 
-# calculating differences attempt 2
+# calculating differences 
 
 lsts = pivoted.values.tolist()
 differences = []
